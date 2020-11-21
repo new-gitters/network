@@ -1,0 +1,353 @@
+Project 2: Analyze TCP efficiency, fairness, and convergence
+============================================================
+
+In this project, you will use a small setup with a single bottleneck
+link that allows multiple TCP flows to pass through it. You will
+analyze how a single TCP flow behaves over a bottleneck link, and how
+that behavior generalizes to various other conditions.
+
+Consider the following network topology:
+
+hsrc1 __                __ hdst1
+         \            /
+hsrc2 -\   \         /  /- hdst2
+         \  |       |  /
+hsrc3 ---- s1  ---- s2 --- hdst3
+         /           \
+...     /             \    ...
+       /               \
+hsrcN -                  - hdstN
+
+Here, N sources (hsrc1, hsrc2, ..., hsrcN) are connected by direct
+links to a switch s1, which is connected to another switch s2 by a
+direct link. Switch s2 is connected to N destinations (hdst1, hdst2,
+..., hdstN) by direct links.
+
+Each source establishes a TCP connection to the corresponding
+destination, e.g., hsrc1 to hdst1, hsrc2 to hdst2, and so on. The link
+s1--s2 is the bottleneck link for these TCP flows.
+
+In a safe experimental setting inside a virtual machine, you will
+study various configurations of this network and submit a report on
+your observations. This project uses the same virtual machine as the
+first project on IP network setup.
+
+The bottleneck link has a configurable rate and a round-trip
+propagation delay. The maximum queueing delay, i.e., the bottleneck
+buffer size, can also be configured. You can also configure the number
+of sources.
+
+The bottleneck queue is FIFO and the buffer implements a "tail drop"
+policy -- packets that arrive when the buffer is full are dropped.
+
+Step 0: Preliminaries
+---------------------
+
+We will continue to use mininet from the first project. If you need a
+refresher on using mininet, please refer to the instructions from the
+first project. The rest of the instructions will assume that you have
+the virtual machine set up and working.
+
+Once logged into your VM, you need to install a plotting tool handy
+for this project. Type:
+
+```
+sudo apt-get update
+sudo apt-get install gnuplot
+```
+
+Use the `scp` tool to move your project2 source files into the VM, or
+use whatever method worked for you in project1.
+
+Step 1: Understand the configuration
+------------------------------------
+
+The file config.py in the project2 source determines the configuration
+of the network that the experiments assume. By default, you will see:
+
+```
+num_hostpairs=1
+bottleneck_bandwidth_Mbps=12
+bottleneck_buffer_pkts=50
+round_trip_delay_ms=50
+test_duration_sec=30
+tcp_flavor="reno"
+```
+
+which provides a network with just one source and destination (i.e.,
+one host pair, contributing to one TCP flow). The bottleneck link has
+a rate of 12 Megabit/s, a round-trip propagation delay of 50
+milliseconds, and a maximum packet buffer of size 50 packets
+(approximately 50 * 1500 bytes, where ~1500 is the maximum size of a
+packet in this network). The test duration represents how long you let
+the flows run in the experiment. By default, this value is 30
+seconds. Further, the TCP flows run TCP Reno, which runs the AIMD
+congestion avoidance algorithm we learned in lecture.
+
+The file config.py is the only file you need to edit in the project
+source code directory. 
+
+Step 2: Run your first experiment
+---------------------------------
+
+Once you've set basic network and experiment parameters in config.py,
+you are ready to run your first experiment. Type:
+
+```
+sudo python run_test.py
+```
+
+The script sets up a mininet network with the parameters described,
+starts a TCP flow between each source/destination host pair, and
+writes temporary outputs in several files in the tmp_files directory.
+
+For example, you may see output that looks like the following:
+
+```
+mininet@mininet-vm:~/project2$ sudo python run_test.py 
+*** Creating network
+*** Adding controller
+*** Adding hosts:
+hdst0 hsrc0 
+*** Adding switches:
+s1 s2 
+*** Adding links:
+(hdst0, s2) (hsrc0, s1) (s1, s2) 
+*** Configuring hosts
+hdst0 (cfs 40000/100000us) hsrc0 (cfs 40000/100000us) 
+*** Starting controller
+c0 
+*** Starting 2 switches
+s1 s2 ...
+Dumping host links
+hdst0 hdst0-eth0:s2-eth2
+hsrc0 hsrc0-eth0:s1-eth2
+Testing network connectivity
+Running pings between host pairs (outputs Yes if successful)
+src0 -> dst0 Yes
+Setting up the bottleneck link
+Starting traffic workload (iperf)
+  Starting iperf servers on flow destination hosts
+  Starting iperf client transmission
+Collecting statistics... this will run for 30 seconds
+Run finished
+*** Stopping 1 controllers
+c0 
+*** Stopping 3 links
+...
+*** Stopping 2 switches
+s1 s2 
+*** Stopping 2 hosts
+hdst0 hsrc0 
+*** Done
+```
+
+You can extract various outputs in the form of plots by running:
+
+```
+bash plot-all.sh
+```
+
+You must see at least 8 files.
+
+```
+mininet@mininet-vm:~/project2$ ls figs/
+config.py  cwnd.png  drop-counts.png  drop-rates.png  dst-rates.png  rtt.png  src-rates.png  utilization.png
+```
+
+The .png files represent graphs obtained from measuring various
+characteristics from the network. Note that these are obtained from
+the actual statistics of the TCP sources and destinations, as well as
+the bottleneck link. The meanings of the graphs are as follows (all
+measurements reported are measured over a second):
+
+drop-rates.png: Packets dropped at the bottleneck link as a fraction
+of the total packets that came into the bottleneck link during the
+last second, plotted over time.
+
+drop-counts.png: The number of packets dropped at the bottleneck
+link over the last second, plotted over time.
+
+utilization.png: The percentage of time the link is busy plotted over
+time. Utilization is averaged per second.
+
+src-rates.png: The rate of data injected by each source into switch s1
+over time, averaged over the last second.
+
+dst-rates.png: The rate of data received by each destination from
+switch s2 over time, averaged over the last second.
+
+cwnd.png: The congestion windows of the TCP sources over time, sampled
+instantaneously.
+
+rtt.png: The smoothed RTT estimate maintained by the TCP sources over
+time, sampled instantaneously.
+
+There is also a copy of the network configuration (config.py)
+available in the figs folder. This will be useful for later reference
+especially when you work with multiple sets of experimental results.
+
+Every time you want to experiment with a network with a different
+configuration, edit config.py, and run the sequence of commands
+
+```
+sudo python run_test.py
+bash plot-all.sh
+```
+
+Every time you generate fresh data, it is useful to store the results
+from the corresponding "figs" folder separately.
+
+For example, if you're using SSH to connect into the virtual machine,
+it is useful to store the results into a separate folder for each run.
+
+For example, you might run the following command on your host
+machine's terminal.
+
+```
+scp mininet@192.168.56.101:/home/mininet/project2/figs/* ./figs-default/
+```
+
+This will copy all the files in the "figs" folder on the VM into the
+host folder "figs-default". You might substitute 192.168.56.101 with
+the IP address you use to SSH into your VM.
+
+Step 3 [this homework] Answer the following questions
+-----------------------------------------------------
+
+This homework project is about experimenting with the network
+configuration provided, running experiments, and interpreting the
+results from the figures in figs/.
+
+Scenario 1. Run the experiment with the default configuration provided
+in config.py. Now respond to the following questions. (Your report
+must contain the figures you discuss.)
+
+Q1(a): What does the link utilization look like over time? Why does it
+look like that?
+
+Q1(b): What do you observe in the sender's congestion window? Relate
+what you see to what you learned in the lecture and in the reading.
+
+Q1(c): How does the receive rate look like? Why does it look different
+from the send rate?
+
+Q1(d): Consider the number of dropped packets. Is it periodic? Why?
+
+Q1(e): The sending rate of the source will often appear to be constant
+in the periods between drops. However, TCP Reno is known to use AIMD
+congestion avoidance, which increases the congestion window linearly
+in the period between drops. So why is the sending rate flat, rather
+than increasing linearly? (Hint: look at the RTT plot.)
+
+Scenario 2. Run the experiment with all parameters the same as the
+default configuration, but increase the number of host pairs
+(num_hostpairs) to 5.
+
+Q2(a): How do the drop rates and drop counts evolve over time? Why?
+
+Q2(b): Do the received rates of the flows converge to their fair share
+of the bottleneck link? Why or why not?
+
+Q2(c): How does the link utilization look? Why?
+
+[Extra credit] Scenario 3. For this scenario, we will experiment with
+all parameters the same as the default configuration except the
+bottleneck buffer size, represents as the number of packets in the
+parameter bottleneck_buffer_pkts.
+
+A bottleneck link capacity of 12 Mbit/s corresponds to a packet rate
+of 1 packet per millisecond (maximum packet size is roughly 1500
+bytes).
+
+With a delay of 50 ms, the bandwidth-delay product (BDP) is 50 * 1 =
+50 packets, which is the same as bottleneck_buffer_pkts.
+
+Hence, the default configuration uses a buffer size of 1 BDP.
+
+Change the bottleneck_buffer_pkts to 150, which is 3 times the
+BDP.
+
+Q3(a): Does increasing buffer size result in avoiding drops? What
+happens to the drop rates and counts over time? Why?
+
+Q3(b): What is the impact of increasing the buffer size on the sending
+rates? Compare and contrast src-rates.png with 1BDP (default) and
+3BDP.
+
+Now change the bottleneck_buffer_pkts to 10 (0.2 BDP).
+
+Q3(c): Does decreasing buffer size result in more drops? What happens
+to the drop rates and counts over time? Why?
+
+Q3(d): What is the impact of decreasing buffer size on the receive
+rates? Compare and contrast dst-rates.png with 1BDP (default) and a
+buffer of 10 packets (0.2 BDP).
+
+[Extra credit] Scenario 4. For this scenario, we will experiment with
+all parameters the same as the default configuration except the
+flavor of TCP, which we will change to "cubic" from "reno".
+
+Q4. How is the congestion window and sending rate of a single TCP
+cubic flow over a bottleneck different from the corresponding values
+for a single TCP reno flow?  Can you explain why there is a
+difference? (You might read up on TCP cubic to learn more about its
+congestion avoidance algorithm.)
+
+What you will submit
+--------------------
+
+Submit just one PDF file with the plots and your analyses to respond
+to the questions above.
+
+Turn in your submission on Sakai. You will work individually and
+submit your answers. Upload only a single file containing the plots
+and discussion.
+
+You are welcome to generate your own plots from the data in the
+outputs/ folder if you wish. This should not be necessary, however.
+
+Questions 1(a-e) and 2(a-c) are mandatory. These questions carry 9% of
+the total points of this course. Each question above carries 1 point
+except 1(e), which carries 2 points.
+
+Questions 3(a-d) and 4 are optional and carry extra credit. You can
+earn an extra 10% points in this course. Each question above carries 2
+points.
+
+Notes
+-----
+
+The file config.py is the only file you need to edit in the project
+source code directory. The project is equipped with all the scripts
+you'll need to generate figures, but you are free to use your own
+scripting and figure generation if you'd like to show something that
+the scripts don't. 
+
+You will benefit significantly from learning to use `scp` skilfully to
+move the plots generated from the experiments to your host machine
+from the VM. The default mininet VM lacks a graphical interface. It is
+simplest if you set yourself up to analyze the plots using the
+graphical interface of your host machine.
+
+Note that each experimental run of run_test.py will overwrite the
+experimental outputs of the previous run.
+
+If needed, it is also possible to inspect the parameters maintained by
+the TCP senders in the Linux network stack. The outputs of the
+tcpprobe tool are stored in tmp_files/tcp-probe.txt. (The congestion
+windows and RTT estimates were extracted using this tool; see
+references below.)
+
+https://wiki.linuxfoundation.org/networking/tcpprobe
+https://wiki.linuxfoundation.org/networking/tcp_testing
+
+The format of the tcpprobe output (from the source of the kernel
+corresponding to the mininet VM you are using) is:
+
+https://elixir.bootlin.com/linux/v4.2.1/source/net/ipv4/tcp_probe.c#L193
+
+START EARLY to allow plenty of time for questions on Slack should you
+run into difficulties. Don't hesitate to ping me directly if you have
+any questions.
+
